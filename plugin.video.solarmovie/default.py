@@ -25,7 +25,6 @@ if REMOTE_DBG:
         sys.exit(1)
 
 
-
 addon = Addon('plugin.video.solarmovie', sys.argv)
 #proxyscraper = Proxyscraper(1,4)
 #proxy, location, proxytype = proxyscraper.find_proxy('us',False,'ANM')
@@ -36,7 +35,6 @@ addondata = xbmcaddon.Addon(id='plugin.video.solarmovie')
 solarpath = addondata.getAddonInfo('path')
 smallimage = os.path.join(xbmc.translatePath(solarpath), \
                           'art','logo_in_gold_black.jpg')
-print smallimage
 
 base_url = 'http://www.solarmovie.eu'
 
