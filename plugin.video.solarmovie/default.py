@@ -8,7 +8,7 @@ from t0mm0.common.net import Net
 import urlresolver
 import xbmcaddon,xbmc
 
-REMOTE_DBG = True
+REMOTE_DBG = False
 
 # append pydev remote debugger
 if REMOTE_DBG:
@@ -43,35 +43,55 @@ play = addon.queries.get('play', None)
 
 
 
-def FindIframeLink(url,name):
-    try: # find the real links to add
-        html = net.http_GET(url).content
-        r = re.search('<iframe name=\'svcframe\' id=\'svcframe\' src="(.+?)"' +
-                      ' allowtransparency', html)
-        if r:
-            msg = 'SolarMovie: Addon link ' + r.group(1)
-            addon.add_video_item(r.group(1), {'title' : name } )
-            return
-        r = re.search('<center><iframe src="(.+)" width', html)
-        if r:
-            msg = 'SolarMovie: Addon link ' + r.group(1)
-            addon.log_error(msg)
-            addon.add_video_item(r.group(1), {'title' : name } )
-            return
-        r = re.search('</param><embed src="(.+?)" type="', html)
-        if r:
-            msg = 'SolarMovie: Addon link ' + r.group(1)
-            addon.log_error(msg)
-            addon.add_video_item(r.group(1), {'title' : name } )
-            return
+def FindIframeLink(url):
+    html = net.http_GET(url).content
+    r = re.search('<iframe name=\'svcframe\' id=\'svcframe\' src="(.+?)"' +
+                  ' allowtransparency', html)
+    if r:
+        return r.group(1)
+    
+    r = re.search('<center><iframe src="(.+)" width', html)
+    if r:
+        return r.group(1)
+    
+    r = re.search('</param><embed src="(.+?)" type="', html)
+    if r:
+        return r.group(1)
+    
+    r = re.search('px src=\'(.+?)\' scrolling=\'', html)
+    if r:
+        return r.group(1)
 
-    except:
-        pass
+
 
 
 if play:
-    stream_url = urlresolver.resolve(play)
-    addon.resolve_url(stream_url)
+    html = net.http_GET(play).content
+    count = 0
+    total = 10
+    sources = {}
+    expr = re.compile('[a|;"]\s\shref="/link/.+/(\d+)/">(.+)</a>\n.*</td>\n.*verionFavoriteCell.*\n.*</td>\n\n.*oddCell">\n.*centered">(.+?)&.*title="(.+?)" />')
+    match = expr.findall(html)
+    if len(match) > 0:
+        for linkid, title, rating, votes in match:
+            url = base_url + '/movie/playlink/id/' + linkid + '/part/1/'
+            hosting_url = FindIframeLink(url)
+            if hosting_url:
+                verified = urlresolver.resolve(hosting_url)
+                if verified:
+                    displayname = '%s %s (%s)' % (
+                                                        title, votes, rating)
+                    mymsg = 'Adding hosting_url to sources: ' + hosting_url
+                    addon.log_error(mymsg)
+                    sources[hosting_url] = displayname
+                    count += 1
+                    if count == total:
+                        break
+        stream_url = urlresolver.choose_source(sources)
+        addon.resolve_url(stream_url)
+    else:
+        addon.log_error('No matching source links')
+
 
 elif mode == 'resolver_settings':
     urlresolver.display_settings()
@@ -79,40 +99,21 @@ elif mode == 'resolver_settings':
 elif mode == 'search':
     pass
 
-elif mode == 'findsolarmovielinks':
-    html = net.http_GET(addon.queries['url']).content
-    try: #Match solarmovie hosting links
-        count = 0
-        expr = re.compile('[a|;"]\s\shref="/link/.+/(\d+)/">(.+)</a>')
-        match = expr.findall(html)
-        if len(match) > 0:
-            for linkid, name in match:
-                msg = 'Solarmovie1: Found ' + name + ' = ' + linkid
-                addon.log_error(msg)
-                url = base_url + '/movie/playlink/id/' + linkid + '/part/1/'
-                FindIframeLink(url,name)
-                count += 1
-                if count > 9:
-                    break
-
-        else:
-            myerror = 'missed: ' + addon.queries['url']
-            addon.log_error(myerror)
-    except:
-        pass
             
 
 elif mode == 'findsolarmovies':
+    print 'Called find the movies on the solarmovies page'
     html = net.http_GET(addon.queries['url']).content
     try:
         match=re.compile('<img src="(.+?)"\n            width="150"' +
                          ' height="220" alt="" />\n    </a>\n    ' +
                          '<span class="movieName">\n        <a title="(.+?)"' +
                          '\n            href="(.+?)">').findall(html)
-        for thumbnail,name,url in match:
+        for thumbnail, title, url in match:
             url = base_url + url
-            addon.add_directory({'mode' : 'findsolarmovielinks', 'url' : url ,\
-                                  'img' : thumbnail }, name, thumbnail)
+            # This should be add_movie_item
+            addon.add_video_item( url, { 'title' : title }, img=thumbnail)
+            
     except:
         pass
 
