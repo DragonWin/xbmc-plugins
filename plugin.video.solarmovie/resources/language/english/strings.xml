@@ -1,6 +1,6 @@
 <strings>
     <!-- General behavior -->
-    <string id="30000">Number of pages to to scan</string>
+    <string id="30000">Number of pages to scan</string>
     <string id="30001">Hide adult content</string>
     <string id="30002">Numbers of video links to scan</string>
     
