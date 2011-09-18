@@ -1,10 +1,8 @@
-import re
-import string
-import sys
-import os
+import re, string, sys, os
+from urllib2 import Request, urlopen, URLError, HTTPError
 from t0mm0.common.addon import Addon
+from t0mm0.common.addon import ContextMenu
 from t0mm0.common.net import Net
-# from t0mm0.common.proxyscraper import Proxyscraper
 import urlresolver
 import xbmcaddon,xbmc,xbmcgui
 from random import SystemRandom
@@ -27,24 +25,52 @@ if REMOTE_DBG:
 
 
 addon = Addon('plugin.video.solarmovie', sys.argv)
-    
-
-#proxyscraper = Proxyscraper(1,4)
-#proxy, location, proxytype = proxyscraper.find_proxy('us',False,'ANM')
-#net = Net('',proxy)
+cm = ContextMenu(addon)
 net = Net()
 
-addondata = xbmcaddon.Addon(id='plugin.video.solarmovie')
-solarpath = addondata.getAddonInfo('path')
+numpagesindex = { '0' : 1, '1' : 2, '2' : 3, '3' : 4, '4' : 5, '5' : 6,
+                  '6' : 7, '7' : 8, '8' : 9, '9' : 10 }
+
+catagories = [ 'Action', 'Adult', 'Adventure', 'Animation', 'Biography',
+               'Comedy', 'Crime', 'Documentary', 'Drama', 'Family', 
+               'Fantasy', 'Film Noir', 'Game Show', 'History', 'Horror', 
+               'Music', 'Mystical', 'News', 'Reality TV', 'Romance', 
+               'Sci-Fi', 'Short', 'Sport', 'Talk Show', 'Thriller', 
+               'War', 'Western' ]
+
+myaddon = xbmcaddon.Addon(id='plugin.video.solarmovie')
+numpages = numpagesindex[addon.get_setting('numpages')]
+hideadult = addon.get_setting('hideadult')
+
+solarpath = addon.get_path()
 smallimage = os.path.join(xbmc.translatePath(solarpath), \
                           'art','logo_in_gold_black.jpg')
 
 base_url = 'http://www.solarmovie.eu'
-
 mode = addon.queries['mode']
 play = addon.queries.get('play', None)
 
 
+def MatchMovieEntries(html):
+    match=re.compile('<img src="(.+?)"\n            width="150"' +
+                     ' height="220" alt="" />\n    </a>\n    ' +
+                     '<span class="movieName">\n        <a title="(.+?)"' +
+                     '\n            href="(.+?)">').findall(html)
+    return match
+
+def MatchTvEntries(html):
+    match=re.compile('<img src="(.+?)"\n.*width.+?\n\s+</a>\n\s+<span.+?\n' +
+                     '\s+<a title="(.+?)"\n\s+href="(.+?)"').findall(html)
+    return match
+
+def GetSeachHTML(url):
+    req = Request(url)
+    try:
+        urlopen(req)
+    except HTTPError, e:
+        html = e.read()
+    return html
+                     
 
 def FindIframeLink(url):
     html = net.http_GET(url).content
@@ -63,13 +89,12 @@ def FindIframeLink(url):
     
     r = re.search('px\' src=\'(.+?)\' scrolling=\'', html)
     if r:
-        #mymsg ='found via new regex'
-        #addon.log_error(mymsg)
         return r.group(1)
 
 
 if play:
     html = net.http_GET(play).content
+    mydict = addon.parse_query(sys.argv[2])
     count = 0
     total = 10
     sources = {}
@@ -77,18 +102,14 @@ if play:
     match = expr.findall(html)
     if match:
         for linkid, title, rating, votes in match:
+            print linkid
             url = base_url + '/movie/playlink/id/' + linkid + '/part/1/'
             hosting_url = FindIframeLink(url)
             if hosting_url:
                 mymsg = 'Trying to resolve' + hosting_url
-                addon.log_error(mymsg)
-                #verified = urlresolver.resolve(hosting_url)
-                #if verified:
+                addon.log_debug(mymsg)
                 title = addon.decode(title)
-                displayname = '%s %s (%s)' % (
-                                                    title, votes, rating)
-                #mymsg = 'Adding hosting_url to sources: ' + hosting_url
-                #addon.log_error(mymsg)
+                displayname = '%s %s (%s)' % (title, votes, rating)
                 sources[hosting_url] = displayname
                 count += 1
                 if count == total:
@@ -96,83 +117,260 @@ if play:
         stream_url = urlresolver.choose_source(sources)
         addon.resolve_url(stream_url)
     else:
-        addon.log_error('No matching source links')
-        addon.show_small_popup('SolarMovie','Sorry no source links','3000',smallimage)
+        addon.show_small_popup('SolarMovie','No sources available',3000,
+                               smallimage)
+
+
+elif mode == 'findsolarmovies':
+    #print 'Called find the movies on the solarmovies page'
+    cm.add_context('Jump to favorites', { 'mode' : 'showfavorites' }, True)
+    cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
+    cm.add_favorite('Save solarmovie favorite', 
+                                  { 'mode' : 'play' },'savefavorite', 
+                                  'movie')
+
+    
+    page = 1
+    url = addon.queries['url']
+    while page <= numpages:
+        if addon.queries['multipage'] == 'yes':
+            url = ('%s?page=%s') % (addon.queries['url'], page)
+        else:
+            page = 9998
+        html = net.http_GET(url).content
+        match = MatchMovieEntries(html)        
+        for thumbnail, title, url in match:
+            url = base_url + url
+            addon.add_video_item( url, { 'title' : title }, thumbnail, cm=cm)
+        page = page + 1
+
+
+elif mode == 'findsolartvshows':
+    cm.add_context('Jump to favorites', { 'mode' : 'showfavorites' }, True)
+    cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
+    cm.add_favorite('Save solarmovie favorite', 
+                                  { 'mode' : 'findtvseason' },'savefavorite', 
+                                  'tv')
+    page = 1
+    url = addon.queries['url']
+    while page <= numpages:
+        if addon.queries['multipage'] == 'yes':
+            if page == 1:
+                url = addon.queries['url']
+            else:
+                url = ('%s?page=%s') % (addon.queries['url'], page)
+        else:
+            page = 9998
+        print url
+        html = net.http_GET(url).content
+        match = MatchTvEntries(html)
+        for thumbnail, title, url in match:
+            url = base_url + url
+            addon.add_directory( { 'mode' : 'findtvseasons', 'type' : 'tv',
+                                  'url' : url}, title, thumbnail, cm=cm)
+        page = page + 1
+        
+
+elif mode == 'findtvseasons':
+    cm.add_context('Jump to favorites', { 'mode' : 'showfavorites' }, True)
+    cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
+    cm.add_favorite('Save solarmovie favorite', 
+                                  { 'mode' : 'findepisodes' },'savefavorite', 
+                                  'tv')
+    html = net.http_GET(addon.queries['url']).content
+    match=re.compile('<h4><a href="(.+?)">\n\s+Season\s(.+?)</a>').findall(html)
+    if match:
+        dict = {}
+        for url, season in match:
+            season = season.rjust(2,'0')
+            title = 'Season %s' % (season)
+            url = '%s%s' % (base_url, url)
+            dict[season] = { 'url' : url, 'title' : title }
+        for key in sorted(dict.iterkeys()):
+            addon.add_directory( { 'mode' : 'findepisodes' , 'type' : 'tv', 
+                                  'url' : dict[key]['url']}, dict[key]['title'], 
+                                cm=cm)
+    
+
+elif mode == 'findepisodes':
+    cm.add_context('Jump to favorites', { 'mode' : 'showfavorites' }, True)
+    cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
+    cm.add_favorite('Save solarmovie favorite', 
+                                  { 'mode' : 'play' },'savefavorite', 
+                                  'tv')
+    html = net.http_GET(addon.queries['url']).content
+    match=re.compile('">Episode\s(\d+)</a>\n\s+</span>\n\n\s+<span class.+?\n' +
+                     '\s+<span class.+?\n\n\s+<a href="(.+?)">(.+?)</a>\n').findall(html)
+    if match:
+        dict = {}
+        for episode, url, title in match:
+            episode = episode.rjust(2,'0')
+            url = '%s%s' % (base_url, url)
+            title = 'Episode %s  (%s)' % (episode, title)
+            dict[episode] = {'url' : url, 'title' : title }
+        for key in sorted(dict.iterkeys()):
+            addon.add_video_item(dict[key]['url'], { 'title' : dict[key]['title'] }, cm=cm)
+
+
+
+elif mode == 'genres':
+    for catagori in catagories:
+        
+        title = catagori
+        if title == 'Adult' and hideadult == 'true':
+            pass
+        else:
+            if addon.queries['type'] == 'movies':
+                url = 'http://www.solarmovie.eu/watch-%s-movies.html' % (catagori)
+                addon.add_directory({'mode' : 'findsolarmovies', 'url' : url, 
+                                     'multipage' : 'yes' }, title, cm=cm)
+            else:
+                url = 'http://www.solarmovie.eu/tv/watch-%s-tv-shows.html/' % (catagori)
+                addon.add_directory({'mode' : 'findsolartvshows', 'url' : url, 
+                                     'multipage' : 'yes' }, title, cm=cm)
+
+
+elif mode == 'main':
+    html = net.http_GET('http://www.solarmovie.eu/movies/').content
+    r = re.search('The website is temporally down', html)
+    if r:
+        addon.show_small_popup('SolarMovie','Website is temporally down', 5000, 
+                               smallimage)
+    else:
+        addon.show_small_popup('SolarMovie','Is now loaded enjoy',5000,
+                               smallimage)
+        
+        cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
+        cm.add_favorite('Save solarmovie favorite', 
+                                  { 'mode' : 'findsolarmovies' },'savefavorite', 
+                                  'movie')
+
+
+        addon.add_directory( { 'mode' : 'movies'}, 'Movies')
+        addon.add_directory( { 'mode' : 'tv'}, 'Tv shows')
+        addon.add_directory({'mode' : 'showfavorites' }, 'Favorites')
+        
+
+
+elif mode == 'movies':
+    cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
+    cm.add_favorite('Save solarmovie favorite', { 'mode' : 'findsolarmovies' },
+                    'savefavorite', 'movie')
+    addon.add_directory({'mode' : 'findsolarmovies', 
+                     'url' : 'http://www.solarmovie.eu/movies/', 
+                     'multipage' : 'no'}, 'Most Popular Movies Today',
+                    cm=cm)
+    addon.add_directory( { 'mode' : 'genres', 'type' : 'movies'}, 'Genres')
+    addon.add_directory( {'mode' : 'moviesearch'}, 'Search')
+
+
+elif mode == 'tv':
+    cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
+    cm.add_favorite('Save solarmovie favorite', { 'mode' : 'findsolarmovies' },
+                    'savefavorite', 'tv')
+    
+    addon.add_directory({'mode' : 'findsolartvshows', 
+                         'url' : 'http://www.solarmovie.eu/tv/', 
+                         'multipage' : 'no'}, 'Most Popular TV shows Today',
+                        cm=cm)
+    addon.add_directory( { 'mode' : 'genres', 'type' : 'tv'}, 'Genres')
+    addon.add_directory( {'mode' : 'tvsearch'}, 'Search')
 
 
 elif mode == 'resolver_settings':
     urlresolver.display_settings()
 
 
-elif mode == 'search':
-    pass
-
-
-elif mode == 'findsolarmovies':
-    #Called find the movies on the solarmovies page
-    mymenuobj = addon.create_contextmenu('Go to Main screen','mode=main', 
-                                              newlist=True)
-    mymenuobj = addon.create_contextmenu('Save Favorite','mode=savefav', 
-                                              newlist=False, 
-                                              contextmenuobj=mymenuobj)
-    print mymenuobj
-    html = net.http_GET(addon.queries['url']).content
-    match=re.compile('<img src="(.+?)"\n            width="150"' +
-                     ' height="220" alt="" />\n    </a>\n    ' +
-                     '<span class="movieName">\n        <a title="(.+?)"' +
-                     '\n            href="(.+?)">').findall(html)
-    for thumbnail, title, url in match:
-        url = base_url + url
-        if mymenuobj:
-            addon.add_video_item( url, { 'title' : title }, img=thumbnail, 
-                                  contextmenuobj=mymenuobj)
-        else:
-            addon.add_video_item( url, { 'title' : title }, img=thumbnail)
-
-    
-elif mode == 'main':
-    html = net.http_GET('http://www.solarmovie.eu/movies/').content
-    r = re.search('The website is temporally down', html)
-    if r:
-        addon.show_small_popup('SolarMovie','Website is temporally down', 5000, smallimage)
+elif mode == 'savefavorite':
+    test = addon.save_favorite()
+    if test is False:
+        addon.show_small_popup(msg='Unable to save favorite')
     else:
-        addon.show_small_popup('SolarMovie','Is now loaded enjoy',5000,smallimage)
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/movies/'}, 'Most Popular Movies Today')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/tv/'}, 'Most Popular TV shows Today')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-action-movies.html'}, 'Action')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-adult-movies.html'}, 'Adult')    
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-adventure-movies.html'}, 'Adventure')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-animation-movies.html'}, 'Animation')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-biography-movies.html'}, 'Biography')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-comedy-movies.html'}, 'Comedy')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-crime-movies.html'}, 'Crime')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-documentary-movies.html'}, 'Documentary')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-drama-movies.html'}, 'Drama')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-family-movies.htm'}, 'Family')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-fantasy-movies.html'}, 'Fantasy')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-film-noir-movies.html'}, 'Film Noir')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-game-show-movies.html'}, 'Game Show')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-history-movies.html'}, 'History')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-horror-movies.html'}, 'Horror')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-musical-movies.html'}, 'Music')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-action-movies.html'}, 'Mystical')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-news-movies.html'}, 'News')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-reality-tv-movies.html'}, 'Reality TV')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-romance-movies.html'}, 'Romance')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-sci-fi-movies.html'}, 'Sci-Fi')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-short-movies.html'}, 'Short')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-sport-movies.html'}, 'Sport')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-talk-show-movies.html'}, 'Talk Show')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-thriller-movies.html'}, 'Thriller')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-war-movies.html'}, 'War')
-        addon.add_directory({'mode' : 'findsolarmovies', 'url' : 'http://www.solarmovie.eu/watch-western-movies.html'}, 'Western')
+        addon.show_small_popup(msg='Favorite saved')
 
 
-
-elif mode == 'savefav':
-    addon.show_small_popup('SolarMovie','Favorite saved',5000,smallimage)
-
+elif mode == 'moviesearch':
+    html = ''
+    cm.add_context('Jump to favorites', { 'mode' : 'showfavorites' }, True)
+    cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
+    cm.add_favorite('Save solarmovie favorite', 
+                                  { 'mode' : 'play' },'savefavorite', 
+                                  'movie')
+    kb = xbmc.Keyboard('', 'Search Solarmovies', False)
+    kb.doModal()
+    if kb.isConfirmed():
+        text = kb.getText()
+        if text != '':
+            searchurl = '%s/movie/search/?query=%s' % (base_url, text)
+            page = 1
+            while page <= 3:
+                if page == 1:
+                    url = searchurl
+                else:
+                    url = '%s&page=%s' % (searchurl, page)
+                    
+                html = GetSeachHTML(url)
+                r = re.search('Nothing was found by your request', html)
+                if r:
+                    page = 9998
+                else:
+                    match = MatchMovieEntries(html)
+                    for thumbnail, title, url in match:
+                        url = base_url + url
+                        addon.add_video_item( url, { 'title' : title }, thumbnail, cm=cm)
+                page = page + 1
+                
+                
+elif mode == 'tvsearch':
+    html = ''
+    cm.add_context('Jump to favorites', { 'mode' : 'showfavorites' }, True)
+    cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
+    cm.add_favorite('Save solarmovie favorite', 
+                                  { 'mode' : 'findtvseasons' },'savefavorite', 
+                                  'tv')
+    kb = xbmc.Keyboard('', 'Search Solarmovies', False)
+    kb.doModal()
+    if kb.isConfirmed():
+        text = kb.getText()
+        if text != '':
+            url = '%s/movie/search/?query=%s&part=series' % (base_url, text)
+            html = GetSeachHTML(url)
+            r = re.search('Nothing was found by your request', html)
+            if r:
+                pass
+            else:
+                match = MatchTvEntries(html)
+                if match:
+                    dict = {}
+                    for thumbnail, title, url in match:
+                        url = base_url + url
+                        dict[title] = {'title' : title, 'url' : url, 'thumbnail' : thumbnail}
+                    for key in sorted(dict.iterkeys()):
+                        addon.add_directory( { 'mode' : 'findtvseasons', 
+                                              'type' : 'tv', 
+                                              'url' : dict[key]['url'], 
+                                              'multipage' : 'no'}, 
+                                            dict[key]['title'], 
+                                            dict[key]['thumbnail'], cm=cm)
+                    
     
+
+elif mode == 'deletefavorite':
+    addon.del_favorite()
+        
+elif mode == 'showfavorites':
+    favorites = addon.show_favorites( {'movies' : 'Movies', 'tv' : 'TV Shows' } )
+    if favorites:
+        cm.add_favorite('Delete favorite',{ 'mode' : 'deletefavorite'}, 
+                        'deletefavorite', addon.queries['favtype'] )
+        for data in favorites:
+            if data['callback'] == 'play':
+                addon.add_item(data['url'], { 'title' : data['title']}, 
+                              item_type=data['item_type'], cm=cm)
+            else:
+                addon.add_directory(data['queries'], data['title'], cm=cm)
+
+
 if not play:
     addon.end_of_directory()
 
