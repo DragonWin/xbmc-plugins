@@ -301,6 +301,7 @@ elif mode == 'moviesearch':
     if kb.isConfirmed():
         text = kb.getText()
         if text != '':
+            dict = {}
             searchurl = '%s/movie/search/?query=%s' % (base_url, text)
             page = 1
             while page <= 3:
@@ -317,8 +318,14 @@ elif mode == 'moviesearch':
                     match = MatchMovieEntries(html)
                     for thumbnail, title, url in match:
                         url = base_url + url
-                        addon.add_video_item( url, { 'title' : title }, thumbnail, cm=cm)
+                        dict[title] = { 'thumbnail' : thumbnail, 
+                                       'title' : title, 'url' : url }
                 page = page + 1
+            # Do key stuff and add video items.
+            for key in sorted (dict.iterkeys()):
+                addon.add_video_item( dict[key]['url'], 
+                                      { 'title' : dict[key]['title'] }, 
+                                      dict[key]['thumbnail'], cm=cm)
                 
                 
 elif mode == 'tvsearch':
