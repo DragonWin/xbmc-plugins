@@ -48,6 +48,7 @@ smallimage = os.path.join(xbmc.translatePath(solarpath), \
                           'art','logo_in_gold_black.jpg')
 
 numpages = numpagesindex[addon.get_setting('numpages')]
+maxlinks = int(addon.get_setting('maxlinks'))
 hideadult = addon.get_setting('hideadult')
 enableproxy = addon.get_setting('proxy_enable')
 proxyserver = addon.get_setting('proxy_server')
@@ -55,7 +56,6 @@ proxyport = addon.get_setting('proxy_port')
 proxyuser = addon.get_setting('proxy_user')
 proxypass = addon.get_setting('proxy_pass')
 
-print 'proxy' + enableproxy
 
 if enableproxy == 'true':
     proxy = 'http://'
@@ -64,7 +64,6 @@ if enableproxy == 'true':
                                   proxyserver, proxyport)
     else:
         proxy = '%s%s:%s' % (proxy, proxyserver, proxyport)
-    print proxy
     net.set_proxy(proxy)
     try:
         html = net.http_GET('http://www.google.com').content
@@ -76,10 +75,6 @@ if enableproxy == 'true':
         net.set_proxy('')
 
 
-
-
-
-
 def MatchMovieEntries(html):
     match=re.compile('<img src="(.+?)"\n            width="150"' +
                      ' height="220" alt="" />\n    </a>\n    ' +
@@ -87,10 +82,12 @@ def MatchMovieEntries(html):
                      '\n            href="(.+?)">').findall(html)
     return match
 
+
 def MatchTvEntries(html):
     match=re.compile('<img src="(.+?)"\n.*width.+?\n\s+</a>\n\s+<span.+?\n' +
                      '\s+<a title="(.+?)"\n\s+href="(.+?)"').findall(html)
     return match
+
 
 def GetSeachHTML(url):
     req = Request(url)
@@ -107,15 +104,12 @@ def FindIframeLink(url):
                   ' allowtransparency', html)
     if r:
         return r.group(1)
-    
     r = re.search('<center><iframe src="(.+)" width', html)
     if r:
         return r.group(1)
-    
     r = re.search('</param><embed src="(.+?)" type="', html)
     if r:
         return r.group(1)
-    
     r = re.search('px\' src=\'(.+?)\' scrolling=\'', html)
     if r:
         return r.group(1)
@@ -125,13 +119,11 @@ if play:
     html = net.http_GET(play).content
     mydict = addon.parse_query(sys.argv[2])
     count = 0
-    total = 10
     sources = {}
     expr = re.compile('[a|;"]\s\shref="/link/.+/(\d+)/">(.+)</a>\n.*</td>\n.*verionFavoriteCell.*\n.*</td>\n\n.*oddCell">\n.*centered">(.+?)&.*title="(.+?)" />')
     match = expr.findall(html)
     if match:
         for linkid, title, rating, votes in match:
-            print linkid
             url = base_url + '/movie/playlink/id/' + linkid + '/part/1/'
             hosting_url = FindIframeLink(url)
             if hosting_url:
@@ -141,7 +133,7 @@ if play:
                 displayname = '%s %s (%s)' % (title, votes, rating)
                 sources[hosting_url] = displayname
                 count += 1
-                if count == total:
+                if count == maxlinks:
                     break
         stream_url = urlresolver.choose_source(sources)
         addon.resolve_url(stream_url)
@@ -151,14 +143,11 @@ if play:
 
 
 elif mode == 'findsolarmovies':
-    #print 'Called find the movies on the solarmovies page'
     cm.add_context('Jump to favorites', { 'mode' : 'showfavorites' }, True)
     cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
     cm.add_favorite('Save solarmovie favorite', 
                                   { 'mode' : 'play' },'savefavorite', 
                                   'movie')
-
-    
     page = 1
     url = addon.queries['url']
     while page <= numpages:
@@ -190,7 +179,6 @@ elif mode == 'findsolartvshows':
                 url = ('%s?page=%s') % (addon.queries['url'], page)
         else:
             page = 9998
-        print url
         html = net.http_GET(url).content
         match = MatchTvEntries(html)
         for thumbnail, title, url in match:
@@ -241,7 +229,6 @@ elif mode == 'findepisodes':
             addon.add_video_item(dict[key]['url'], { 'title' : dict[key]['title'] }, cm=cm)
 
 
-
 elif mode == 'genres':
     for catagori in catagories:
         
@@ -273,13 +260,10 @@ elif mode == 'main':
         cm.add_favorite('Save solarmovie favorite', 
                                   { 'mode' : 'findsolarmovies' },'savefavorite', 
                                   'movie')
-
-
         addon.add_directory( { 'mode' : 'movies'}, 'Movies')
         addon.add_directory( { 'mode' : 'tv'}, 'Tv shows')
         addon.add_directory({'mode' : 'showfavorites' }, 'Favorites')
         
-
 
 elif mode == 'movies':
     cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
@@ -355,8 +339,8 @@ elif mode == 'moviesearch':
                 addon.add_video_item( dict[key]['url'], 
                                       { 'title' : dict[key]['title'] }, 
                                       dict[key]['thumbnail'], cm=cm)
-                
-                
+
+
 elif mode == 'tvsearch':
     html = ''
     cm.add_context('Jump to favorites', { 'mode' : 'showfavorites' }, True)
@@ -388,12 +372,12 @@ elif mode == 'tvsearch':
                                               'multipage' : 'no'}, 
                                             dict[key]['title'], 
                                             dict[key]['thumbnail'], cm=cm)
-                    
-    
+
 
 elif mode == 'deletefavorite':
     addon.del_favorite()
-        
+
+
 elif mode == 'showfavorites':
     favorites = addon.show_favorites( {'movies' : 'Movies', 'tv' : 'TV Shows' } )
     if favorites:
