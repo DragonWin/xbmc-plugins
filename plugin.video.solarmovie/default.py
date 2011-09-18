@@ -22,12 +22,7 @@ if REMOTE_DBG:
         sys.stderr.write("Error: " +
             "You must add org.python.pydev.debug.pysrc to your PYTHONPATH.")
         sys.exit(1)
-
-
-addon = Addon('plugin.video.solarmovie', sys.argv)
-cm = ContextMenu(addon)
-net = Net()
-
+        
 numpagesindex = { '0' : 1, '1' : 2, '2' : 3, '3' : 4, '4' : 5, '5' : 6,
                   '6' : 7, '7' : 8, '8' : 9, '9' : 10 }
 
@@ -38,17 +33,51 @@ catagories = [ 'Action', 'Adult', 'Adventure', 'Animation', 'Biography',
                'Sci-Fi', 'Short', 'Sport', 'Talk Show', 'Thriller', 
                'War', 'Western' ]
 
-myaddon = xbmcaddon.Addon(id='plugin.video.solarmovie')
-numpages = numpagesindex[addon.get_setting('numpages')]
-hideadult = addon.get_setting('hideadult')
+
+addon = Addon('plugin.video.solarmovie', sys.argv)
+cm = ContextMenu(addon)
+net = Net()
+net.set_user_agent('Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.0; Trident/5.0; yie9)')
+
+base_url = 'http://www.solarmovie.eu'
+mode = addon.queries['mode']
+play = addon.queries.get('play', None)
 
 solarpath = addon.get_path()
 smallimage = os.path.join(xbmc.translatePath(solarpath), \
                           'art','logo_in_gold_black.jpg')
 
-base_url = 'http://www.solarmovie.eu'
-mode = addon.queries['mode']
-play = addon.queries.get('play', None)
+numpages = numpagesindex[addon.get_setting('numpages')]
+hideadult = addon.get_setting('hideadult')
+enableproxy = addon.get_setting('proxy_enable')
+proxyserver = addon.get_setting('proxy_server')
+proxyport = addon.get_setting('proxy_port')
+proxyuser = addon.get_setting('proxy_user')
+proxypass = addon.get_setting('proxy_pass')
+
+print 'proxy' + enableproxy
+
+if enableproxy == 'true':
+    proxy = 'http://'
+    if proxyuser:
+        proxy = '%s%s:%s@%s:%s' %(proxy, proxyuser, proxypass,
+                                  proxyserver, proxyport)
+    else:
+        proxy = '%s%s:%s' % (proxy, proxyserver, proxyport)
+    print proxy
+    net.set_proxy(proxy)
+    try:
+        html = net.http_GET('http://www.google.com').content
+    except HTTPError, e:
+
+        heading = '%s %d' % ('Proxy Error', e.code)
+        addon.show_small_popup(heading,'Change your proxy settings',5000,
+                               smallimage)
+        net.set_proxy('')
+
+
+
+
 
 
 def MatchMovieEntries(html):
@@ -237,8 +266,8 @@ elif mode == 'main':
         addon.show_small_popup('SolarMovie','Website is temporally down', 5000, 
                                smallimage)
     else:
-        addon.show_small_popup('SolarMovie','Is now loaded enjoy',5000,
-                               smallimage)
+        #addon.show_small_popup('SolarMovie','Is now loaded enjoy',5000,
+        #                       smallimage)
         
         cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
         cm.add_favorite('Save solarmovie favorite', 

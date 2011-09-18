@@ -1,4 +1,13 @@
 <strings>
+    <!-- General behavior -->
     <string id="30000">Number of pages to to scan</string>
     <string id="30001">Hide adult content</string>
+    
+    <!-- Proxy Settings -->
+    <string id="30100">Enable Proxy</string>
+    <string id="30101">Proxy Server</string>
+    <string id="30102">Proxy Port</string>
+    <string id="30103">Proxy Username</string>
+    <string id="30104">Proxy Password</string>
+    
 </strings>
