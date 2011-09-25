@@ -253,9 +253,6 @@ elif mode == 'main':
         addon.show_small_popup('SolarMovie','Website is temporally down', 5000, 
                                smallimage)
     else:
-        #addon.show_small_popup('SolarMovie','Is now loaded enjoy',5000,
-        #                       smallimage)
-        
         cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
         cm.add_favorite('Save solarmovie favorite', 
                                   { 'mode' : 'findsolarmovies' },'savefavorite', 
@@ -269,6 +266,7 @@ elif mode == 'movies':
     cm.add_context('Go to addon main screen', { 'mode' : 'main' }, True)
     cm.add_favorite('Save solarmovie favorite', { 'mode' : 'findsolarmovies' },
                     'savefavorite', 'movie')
+    
     addon.add_directory({'mode' : 'findsolarmovies', 
                      'url' : 'http://www.solarmovie.eu/movies/', 
                      'multipage' : 'no'}, 'Most Popular Movies Today',
@@ -292,14 +290,6 @@ elif mode == 'tv':
 
 elif mode == 'resolver_settings':
     urlresolver.display_settings()
-
-
-elif mode == 'savefavorite':
-    test = addon.save_favorite()
-    if test is False:
-        addon.show_small_popup(msg='Unable to save favorite')
-    else:
-        addon.show_small_popup(msg='Favorite saved')
 
 
 elif mode == 'moviesearch':
@@ -372,6 +362,14 @@ elif mode == 'tvsearch':
                                               'multipage' : 'no'}, 
                                             dict[key]['title'], 
                                             dict[key]['thumbnail'], cm=cm)
+
+
+elif mode == 'savefavorite':
+    test = addon.save_favorite()
+    if test is False:
+        addon.show_small_popup(msg='Unable to save favorite')
+    else:
+        addon.show_small_popup(msg='Favorite saved')
 
 
 elif mode == 'deletefavorite':
